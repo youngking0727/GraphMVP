@@ -1,6 +1,8 @@
 import random
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from itertools import compress
+import json
+import pickle
 
 import numpy as np
 import torch
@@ -53,7 +55,7 @@ def scaffold_split(dataset, smiles_list, task_idx=None, null_value=0,
         scaffold = generate_scaffold(smiles, include_chirality=True)
         if scaffold not in all_scaffolds:
             all_scaffolds[scaffold] = [i]
-        else:
+        else: 
             all_scaffolds[scaffold].append(i)
 
     # sort from largest to smallest sets
@@ -62,6 +64,13 @@ def scaffold_split(dataset, smiles_list, task_idx=None, null_value=0,
         scaffold_set for (scaffold, scaffold_set) in sorted(
             all_scaffolds.items(), key=lambda x: (len(x[1]), x[1][0]), reverse=True)
     ]
+    # TODO: debug
+    scaffold_index = OrderedDict()
+    for i, value in enumerate(all_scaffold_sets):
+        scaffold_index[i] = str(value)
+    scaffold_index = json.dumps(scaffold_index)
+    with open("scaffold_set.json", "w") as f:
+        f.write(scaffold_index)
 
     # get train, valid test indices
     train_cutoff = frac_train * len(smiles_list)
@@ -82,6 +91,15 @@ def scaffold_split(dataset, smiles_list, task_idx=None, null_value=0,
     train_dataset = dataset[torch.tensor(train_idx)]
     valid_dataset = dataset[torch.tensor(valid_idx)]
     test_dataset = dataset[torch.tensor(test_idx)]
+    
+    index_dict = {"train": train_idx, "val": valid_idx, "test": test_idx}
+    
+    with open("index.pkl", "wb") as f:
+        pickle.dump(index_dict, f)
+    
+    train_data_dict = {}
+    train_data_dict["data"] = [i for i in train_dataset]
+    torch.save(train_data_dict, "train_data_dict.pt")
 
     if not return_smiles:
         return train_dataset, valid_dataset, test_dataset

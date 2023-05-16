@@ -84,6 +84,10 @@ if __name__ == '__main__':
         if torch.cuda.is_available() else torch.device('cpu')
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.runseed)
+        
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.enabled = True
 
     # Bunch of classification tasks
     num_tasks = get_num_task(args.dataset)
@@ -124,19 +128,15 @@ if __name__ == '__main__':
                              shuffle=False, num_workers=args.num_workers)
 
     # set up model
-    molecule_model = GNN(num_layer=args.num_layer, emb_dim=args.emb_dim,
-                         JK=args.JK, drop_ratio=args.dropout_ratio,
-                         gnn_type=args.gnn_type)
-    model = GNN_graphpred(args=args, num_tasks=num_tasks,
-                          molecule_model=molecule_model)
-    if not args.input_model_file == '':
-        model.from_pretrained(args.input_model_file)
+    model = MolALBEF(args, num_tasks)
+    model.from_pretrained(args.input_model_file)
     model.to(device)
     # print(model)
+    
 
     # set up optimizer
     # different learning rates for different parts of GNN
-    model_param_group = [{'params': model.molecule_model.parameters()},
+    model_param_group = [{'params': model.graph_encoder.parameters()},
                          {'params': model.graph_pred_linear.parameters(),
                           'lr': args.lr * args.lr_scale}]
     optimizer = optim.Adam(model_param_group, lr=args.lr,
@@ -171,7 +171,7 @@ if __name__ == '__main__':
             if not args.output_model_dir == '':
                 output_model_path = join(args.output_model_dir, 'model_best.pth')
                 saved_model_dict = {
-                    'molecule_model': molecule_model.state_dict(),
+                    'molecule_model': model.state_dict(),
                     'model': model.state_dict()
                 }
                 torch.save(saved_model_dict, output_model_path)
@@ -181,14 +181,14 @@ if __name__ == '__main__':
                          test_target=test_target, test_pred=test_pred)
 
     print('best train: {:.6f}\tval: {:.6f}\ttest: {:.6f}'.format(train_roc_list[best_val_idx], val_roc_list[best_val_idx], test_roc_list[best_val_idx]))
-    with open(f"{'GraphMVP'}_{args.dataset}.txt", "a") as f:
-        f.write('batch_size: {:3}\tbest train: {:.6f}\tval: {:.6f}\ttest: {:.6f} \n'.format(args.batch_size, train_roc_list[best_val_idx], val_roc_list[best_val_idx], test_roc_list[best_val_idx]))
-        
+    with open(f"{'MolALBEF'}_{args.dataset}_{args.batch_size}.txt", "a") as f:
+        f.write('seed: {:3}\tbest train: {:.6f}\tval: {:.6f}\ttest: {:.6f}\tdropout {:.6f}\tlr {:.6f}\tdecay {:.6f}\t \n'.format(args.runseed, train_roc_list[best_val_idx], val_roc_list[best_val_idx], test_roc_list[best_val_idx], args.dropout_ratio, args.lr, args.decay))
+      
     
     if args.output_model_dir != '':
-        output_model_path = join(args.output_model_dir, 'model_final.pth')
+        output_model_path = join(args.output_model_dir, f'{args.dataset}_model_final.pth')
         saved_model_dict = {
-            'molecule_model': molecule_model.state_dict(),
+            'molecule_model': model.state_dict(),
             'model': model.state_dict()
         }
         torch.save(saved_model_dict, output_model_path)
